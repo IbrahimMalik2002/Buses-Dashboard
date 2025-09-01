@@ -1,35 +1,42 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import React, { useState } from 'react'
+import MapView from './components/MapView'
+import BasemapControl from './components/BasemapControl'
 
-function App() {
-  const [count, setCount] = useState(0)
 
-  return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+export default function App() {
+const [basemap, setBasemap] = useState('dark')
+
+
+return (
+<div className="app dark">
+<header className="app-header">
+<div className="branding">🚌 Lahore Bus Dashboard</div>
+<div className="header-controls">
+<BasemapControl value={basemap} onChange={setBasemap} />
+</div>
+</header>
+
+
+<main className="main-grid">
+<section className="panel map-panel">
+<MapView basemap={basemap} />
+</section>
+<section className="panel stats-panel">
+<h2>Fleet Snapshot</h2>
+<div className="stats-grid">
+<div className="stat-card"><div className="stat-title">Buses Active</div><div className="stat-value">7</div></div>
+<div className="stat-card"><div className="stat-title">Avg. Speed</div><div className="stat-value">38 km/h</div></div>
+<div className="stat-card"><div className="stat-title">Km Today</div><div className="stat-value">1,240</div></div>
+<div className="stat-card"><div className="stat-title">Fuel Today</div><div className="stat-value">680 L</div></div>
+</div>
+<p className="hint">Click a bus on the map → see its route → “View details”.</p>
+</section>
+</main>
+
+
+<footer className="app-footer">
+<span>Basemaps © OpenStreetMap, CARTO, Esri | Demo data for development only</span>
+</footer>
+</div>
+)
 }
-
-export default App
