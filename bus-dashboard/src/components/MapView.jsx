@@ -41,7 +41,6 @@ export default function MapView({ basemap = "dark" }) {
         version: 8,
         sources: {},
         layers: [],
-        // glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
       },
       center: LAHORE,
       zoom: 11.5,
@@ -50,12 +49,10 @@ export default function MapView({ basemap = "dark" }) {
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }));
 
     map.on("load", () => {
-      // add basemap (no 'before' layer so we avoid referencing missing layer ids)
+      // add basemap
       setBasemap(map, basemap);
 
-      // Add bus emoji as text symbol - no need for image loading
-
-      // add routes & points
+      // Add all routes and bus points
       buses.forEach((bus, idx) => {
         const routeSourceId = `route-${bus.id}`;
         const pointSourceId = `point-${bus.id}`;
@@ -69,6 +66,7 @@ export default function MapView({ basemap = "dark" }) {
             properties: { id: bus.id },
           },
         });
+
         map.addLayer({
           id: routeSourceId,
           type: "line",
@@ -85,6 +83,7 @@ export default function MapView({ basemap = "dark" }) {
           Array.isArray(bus.routeCoords) && bus.routeCoords.length
             ? bus.routeCoords[0]
             : LAHORE;
+
         map.addSource(pointSourceId, {
           type: "geojson",
           data: {
@@ -102,87 +101,30 @@ export default function MapView({ basemap = "dark" }) {
             ],
           },
         });
+
         map.addLayer({
           id: pointSourceId,
-          type: "symbol",
+          type: "circle",
           source: pointSourceId,
-          layout: {
-            "text-field": "🚌",
-            "text-size": 24,
-            "text-allow-overlap": true,
-            "text-ignore-placement": true,
-            "text-anchor": "center",
+          paint: {
+            "circle-radius": 8,
+            "circle-color": "#ffd666",
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#141414",
           },
         });
 
-        map.on(
-          "mouseenter",
-          pointSourceId,
-          () => (map.getCanvas().style.cursor = "pointer")
-        );
-        map.on(
-          "mouseleave",
-          pointSourceId,
-          () => (map.getCanvas().style.cursor = "")
-        );
-        map.on("click", pointSourceId, (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-
-          const feature = e.features?.[0];
-          if (!feature) return;
-
-          const { id, name, routeName } = feature.properties || {};
-          const coords = feature.geometry?.coordinates || start;
-
-          // Find the full bus data
-          const busData = buses.find((b) => b.id === id);
-          if (!busData) return;
-
-          const html = `
-    <div class="popup">
-      <div class="popup-title">${name}</div>
-      <div class="popup-sub">Route: ${routeName}</div>
-      <div class="popup-details">
-        <div class="popup-detail">Driver: ${busData.metrics.driver}</div>
-        <div class="popup-detail">Model: ${busData.metrics.model}</div>
-        <div class="popup-detail">Depot: ${busData.metrics.depot}</div>
-      </div>
-      <button id="view-details-${id}" class="btn">View details →</button>
-    </div>
-  `;
-
-          const popup = new maplibregl.Popup({
-            offset: [0, -25],
-            closeButton: true,
-            closeOnClick: false,
-            closeOnMove: false,
-            autoPan: false,
-            focusAfterOpen: false,
-            maxWidth: "300px",
-          })
-            .setLngLat(coords)
-            .setHTML(html)
-            .addTo(map);
-
-          setTimeout(() => {
-            const btn = document.getElementById(`view-details-${id}`);
-            if (btn) {
-              btn.onclick = (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                popup.remove();
-                navigate(`/bus/${id}`);
-              };
-            }
-          }, 0);
+        // Add hover effects
+        map.on("mouseenter", pointSourceId, () => {
+          map.getCanvas().style.cursor = "pointer";
         });
 
-        // animate this bus
-        animateBus(map, bus);
+        map.on("mouseleave", pointSourceId, () => {
+          map.getCanvas().style.cursor = "";
+        });
       });
 
-      // Fit bounds: build a proper FeatureCollection of LineStrings
+      // Fit bounds to show all routes
       try {
         const features = buses
           .filter(
@@ -193,6 +135,7 @@ export default function MapView({ basemap = "dark" }) {
             geometry: { type: "LineString", coordinates: b.routeCoords },
             properties: {},
           }));
+
         if (features.length) {
           const fc = { type: "FeatureCollection", features };
           const bbox = turf.bbox(fc);
@@ -205,9 +148,147 @@ export default function MapView({ basemap = "dark" }) {
           );
         }
       } catch (err) {
-        // don't block startup if bbox fails
         console.warn("fitBounds failed", err);
       }
+
+      // Start animations after everything is loaded
+      buses.forEach((bus) => {
+        animateBus(map, bus);
+      });
+
+      // Add global click handler for all bus points (this will catch moving buses)
+      map.on("click", (e) => {
+        // Stop the default map behavior immediately
+        e.preventDefault();
+        e.originalEvent?.preventDefault();
+        e.originalEvent?.stopPropagation();
+
+        // Check if we clicked on any bus point layer
+        const features = map.queryRenderedFeatures(e.point, {
+          layers: buses.map((bus) => `point-${bus.id}`),
+        });
+
+        if (features.length > 0) {
+          // Prevent map panning/zooming
+          map.dragPan.disable();
+          map.scrollZoom.disable();
+          map.boxZoom.disable();
+          map.dragRotate.disable();
+          map.keyboard.disable();
+          map.doubleClickZoom.disable();
+
+          const feature = features[0];
+          const { id, name, routeName } = feature.properties || {};
+          const coords = e.lngLat.toArray();
+
+          console.log("Global click - Clicked bus:", {
+            id,
+            name,
+            routeName,
+            coords,
+          });
+
+          // Find the full bus data
+          const busData = buses.find((b) => String(b.id) === String(id));
+          if (!busData) {
+            console.log("Bus data not found for id:", id);
+            // Re-enable map interactions
+            setTimeout(() => {
+              map.dragPan.enable();
+              map.scrollZoom.enable();
+              map.boxZoom.enable();
+              map.dragRotate.enable();
+              map.keyboard.enable();
+              map.doubleClickZoom.enable();
+            }, 100);
+            return;
+          }
+
+          // Remove any existing popups
+          document.querySelectorAll(".maplibregl-popup").forEach((popup) => {
+            popup.remove();
+          });
+
+          const popupHTML = `
+            <div class="popup" style="min-width: 250px; background: white; border-radius: 8px; padding: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+              <div class="popup-title" style="font-weight: bold; font-size: 16px; margin-bottom: 8px; color: #333;">${name}</div>
+              <div class="popup-sub" style="color: #666; margin-bottom: 12px;">Route: ${routeName}</div>
+              <div class="popup-details" style="margin-bottom: 12px;">
+                <div class="popup-detail" style="margin: 4px 0; font-size: 14px; color: #555;"><strong>Driver:</strong> ${busData.metrics.driver}</div>
+                <div class="popup-detail" style="margin: 4px 0; font-size: 14px; color: #555;"><strong>Model:</strong> ${busData.metrics.model}</div>
+                <div class="popup-detail" style="margin: 4px 0; font-size: 14px; color: #555;"><strong>Depot:</strong> ${busData.metrics.depot}</div>
+              </div>
+              <button id="view-details-${id}" class="btn" style="
+                background: #13c2c2; 
+                color: white; 
+                padding: 8px 16px; 
+                border: none; 
+                border-radius: 4px; 
+                cursor: pointer;
+                font-size: 14px;
+                width: 100%;
+                transition: background-color 0.2s;
+              " onmouseover="this.style.background='#0fb8b8'" onmouseout="this.style.background='#13c2c2'">View Details →</button>
+            </div>
+          `;
+
+          const popup = new maplibregl.Popup({
+            offset: [0, -25],
+            closeButton: true,
+            closeOnClick: false,
+            closeOnMove: false,
+            maxWidth: "300px",
+            anchor: "bottom",
+          })
+            .setLngLat(coords)
+            .setHTML(popupHTML)
+            .addTo(map);
+
+          // Re-enable map interactions when popup closes
+          popup.on("close", () => {
+            map.dragPan.enable();
+            map.scrollZoom.enable();
+            map.boxZoom.enable();
+            map.dragRotate.enable();
+            map.keyboard.enable();
+            map.doubleClickZoom.enable();
+          });
+
+          // Add button click handler after popup is added
+          setTimeout(() => {
+            const btn = document.getElementById(`view-details-${id}`);
+            if (btn) {
+              console.log("Adding click handler to button");
+              btn.onclick = (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                console.log("Navigating to bus details:", id);
+                popup.remove();
+                // Re-enable map interactions before navigation
+                map.dragPan.enable();
+                map.scrollZoom.enable();
+                map.boxZoom.enable();
+                map.dragRotate.enable();
+                map.keyboard.enable();
+                map.doubleClickZoom.enable();
+                navigate(`/bus/${id}`);
+              };
+            } else {
+              console.log("Button not found in DOM");
+            }
+          }, 50);
+
+          // Re-enable map interactions after a short delay as backup
+          setTimeout(() => {
+            map.dragPan.enable();
+            map.scrollZoom.enable();
+            map.boxZoom.enable();
+            map.dragRotate.enable();
+            map.keyboard.enable();
+            map.doubleClickZoom.enable();
+          }, 200);
+        }
+      });
     });
 
     mapRef.current = map;
@@ -215,28 +296,29 @@ export default function MapView({ basemap = "dark" }) {
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
       map.remove();
     };
-  }, []);
+  }, [navigate]);
 
-  // react to basemap changes
+  // React to basemap changes
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
     setBasemap(map, basemap);
   }, [basemap]);
 
-  // animate bus along its route (robust guards)
+  // Animate bus along its route
   function animateBus(map, bus) {
-    // build a turf line; guard invalid coords
     if (!Array.isArray(bus.routeCoords) || bus.routeCoords.length < 2) return;
 
     const line = turf.lineString(bus.routeCoords);
     let lengthKm = 0;
+
     try {
       lengthKm = turf.length(line, { units: "kilometers" });
     } catch (err) {
       console.warn("turf.length error for bus", bus.id, err);
       return;
     }
+
     if (!isFinite(lengthKm) || lengthKm <= 0) return;
 
     const durationMs = bus.loopMs || 60_000;
@@ -247,17 +329,17 @@ export default function MapView({ basemap = "dark" }) {
       const now = performance.now();
       const elapsed = (now - startTs) % durationMs;
       const fraction = Math.max(0, Math.min(1, elapsed / durationMs));
-      // clamp distance slightly under lengthKm to avoid potential turf edge-cases
       const distKm = Math.min(
         lengthKm * fraction,
         Math.max(0, lengthKm - 1e-6)
       );
+
       let pt = null;
       try {
         pt = turf.along(line, distKm, { units: "kilometers" });
       } catch (err) {
-        // in case turf.along errors for weird distance, fallback to start or end
         console.warn("turf.along error", err);
+        return;
       }
 
       if (pt && pt.geometry && Array.isArray(pt.geometry.coordinates)) {
@@ -283,17 +365,20 @@ export default function MapView({ basemap = "dark" }) {
 
       frameRef.current = requestAnimationFrame(step);
     };
+
     step();
   }
 
-  // set basemap without referencing a non-existing layer id
+  // Set basemap function
   function setBasemap(map, key) {
     const conf = BASEMAPS[key] || BASEMAPS.dark;
 
     try {
       if (map.getLayer("basemap")) map.removeLayer("basemap");
       if (map.getSource("basemap")) map.removeSource("basemap");
-    } catch {}
+    } catch (e) {
+      // Ignore errors when removing non-existent layers
+    }
 
     map.addSource("basemap", {
       type: "raster",

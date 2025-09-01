@@ -40,3 +40,58 @@
 .read-the-docs {
   color: #888;
 }
+
+/* Add this to your CSS file for better popup styling */
+
+.maplibregl-popup {
+  max-width: 300px !important;
+}
+
+.maplibregl-popup-content {
+  padding: 15px !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+}
+
+.popup {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.popup-title {
+  font-weight: bold;
+  font-size: 16px;
+  margin-bottom: 8px;
+  color: #333;
+}
+
+.popup-sub {
+  color: #666;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.popup-details {
+  margin-bottom: 12px;
+}
+
+.popup-detail {
+  margin: 4px 0;
+  font-size: 14px;
+  color: #555;
+}
+
+.popup .btn {
+  background: #13c2c2;
+  color: white;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  width: 100%;
+  transition: background-color 0.2s;
+}
+
+.popup .btn:hover {
+  background: #0fb8b8;
+}
